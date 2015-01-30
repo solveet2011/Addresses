@@ -1,0 +1,413 @@
+
+
+//This is a simple .net customer base app that enters names etc, fetches info from database thru entityframework and does
+//CRUD opertations etc.
+
+namespace Addresses
+{
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public enum CTypes { Friend, Business, All };
+    public enum PTypes { Home, Mobile, Business };
+
+    public partial class MainWindow : Window
+    {
+        AddressesEntities4 DB = new AddressesEntities4();
+        int current = 0;
+        int CurEmail = 0;
+        int CurPhone = 0;
+        int origRecord = -1;
+        Entry[] SelectedEntries;
+        Email[] SelectedEmails;
+        Phone[] SelectedPhones;
+
+        //looping seemed easier and used break to stop from updating all records
+        Phone[] UpdatePhone;
+        Email[] UpdateEmail;
+
+        //these delete the records and pass to selectall
+        Phone[] DeletePhone;
+        Email[] DeleteEmail;
+
+        CTypes currentType = CTypes.All;
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            SelectAllEntries();
+            Display();
+        }
+
+        void SelectAllEntries()
+        {
+            SelectedEntries = selectEntries();
+            SelectedEntries = selectNewEntries();//This(selectedNewEntries)updates and mainly displays
+            //the new records)
+
+            //these just initialize the arrays so they're read global
+            DeleteEmail = SelectedEntries[CurEmail].Emails.ToArray();
+            DeletePhone = SelectedEntries[CurPhone].Phones.ToArray();
+            UpdateEmail = SelectedEntries[CurEmail].Emails.ToArray();
+            UpdatePhone = SelectedEntries[CurPhone].Phones.ToArray();
+
+        }
+
+        Entry[] selectEntries()
+        {
+            var entries = from ent in DB.Entries
+                          where (currentType == CTypes.All ||
+                              (CTypes)(ent.ContactType) == currentType)
+                          orderby ent.Name
+                          select ent;
+            return entries.ToArray();
+        }
+        /// <summary>
+        /// This query just updates the new records. Need to check for redundancy and see if can be
+        /// factored out
+        /// </summary>
+        /// <returns></returns>
+        Entry[] selectNewEntries()//This array takes in new entries, which will transfer to main array
+        {
+            var newEntries = from ent in DB.Entries
+                             where (currentType == CTypes.All ||
+                                 (CTypes)(ent.ContactType) == currentType)
+                             orderby ent.Name
+                             select ent;
+            return newEntries.ToArray();
+        }
+
+        void ResetDisplay()
+        {
+            origRecord = -1;
+            current = 0;
+            Display();
+        }
+        void Display()
+        {
+            if (current != origRecord)
+            {
+                origRecord = current;
+                Entry e = SelectedEntries[current];
+                tbName.Text = e.Name;
+                tbContactType.Text = ((CTypes)(e.ContactType)).ToString();
+                tbAddress.Text = e.Address;
+                tbCSZ.Text = e.CSZ;
+                SelectedEmails = e.Emails.ToArray();
+                SelectedPhones = e.Phones.ToArray();
+                CurEmail = 0;
+                CurPhone = 0;
+                lblRecord.Content = "Record " + (current + 1) + " of " + SelectedEntries.Length;
+
+                btnStart.IsEnabled = btnPrevious.IsEnabled = (current != 0);
+                btnEnd.IsEnabled = btnNext.IsEnabled = (current != SelectedEntries.Length - 1);
+            }
+            tbEmail.Text = (SelectedEmails.Length == 0) ? "(none)" :
+                SelectedEmails[CurEmail].EmailAddress;
+            String phoneNumber = "";
+            String phoneType = "unknown";
+            if (SelectedPhones.Length > 0)
+            {
+                Phone phone = SelectedPhones[CurPhone];
+                phoneNumber = phone.PhoneNumber;
+                if (SelectedPhones[CurPhone].PhoneType != null) phoneType = ((PTypes)phone.PhoneType).ToString();
+            }
+            tbPhone.Text = phoneNumber + "(" + phoneType + ")";
+
+        }
+
+        private void btnNext_Click(object sender, RoutedEventArgs e)
+        {
+            if (current < SelectedEntries.Length - 1)
+            {
+                current++;
+                Display();
+            }
+        }
+
+        private void btnPrevious_Click(object sender, RoutedEventArgs e)
+        {
+            if (current > 0)
+            {
+                current--;
+                Display();
+            }
+        }
+
+        private void btnStart_Click(object sender, RoutedEventArgs e)
+        {
+            current = 0;
+            Display();
+        }
+
+        private void btnEnd_Click(object sender, RoutedEventArgs e)
+        {
+            current = SelectedEntries.Length - 1;
+            Display();
+        }
+
+        private void btnFind_Click(object sender, RoutedEventArgs e)
+        {
+            if (tbFind.Text == "")
+            {    // Reset to full list
+                SelectAllEntries();
+                ResetDisplay();
+                tbFind_TextChanged(null, null);
+                return;
+            }
+            Entry[] selected = (
+                from ent in selectEntries()
+                where ent.Name.ToUpper().Contains(tbFind.Text.ToUpper())
+                select ent).ToArray();
+            if (selected.Length == 0)
+            {
+                MessageBox.Show("Unable to locate records with " + tbFind.Text);
+                return;
+            }
+            SelectedEntries = selected;
+            ResetDisplay();
+        }
+
+        private void tbFind_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            btnFind.Content = (tbFind.Text.Length == 0 && SelectedEntries.Length
+                != selectEntries().Length ? "Reset" : "Find");
+        }
+
+        private void rbCategory_Checked(object sender, RoutedEventArgs e)
+        {
+            RadioButton button = (RadioButton)sender;
+            CTypes type = currentType;
+            if (button == rbAll) currentType = CTypes.All;
+            if (button == rbFriends) currentType = CTypes.Friend;
+            if (button == rbBusiness) currentType = CTypes.Business;
+            if (currentType == type) return;    // No change
+            SelectAllEntries();
+            ResetDisplay();
+        }
+
+        private void btnNextEmail_Click(object sender, RoutedEventArgs e)
+        {
+            CurEmail++;
+            if (CurEmail >= SelectedEntries[current].Emails.Count())
+                CurEmail = 0;
+            Display();
+        }
+
+        private void btnAddEmail_Click(object sender, RoutedEventArgs e)
+        {
+            EmailAddressDialog ead = new EmailAddressDialog();
+            if (ead.ShowDialog() == true)
+            {
+                Email rec = new Email();
+                rec.EmailAddress = ead.EmailAddress;
+                SelectedEntries[current].Emails.Add(rec);
+                DB.SaveChanges();
+                SelectedEmails = SelectedEntries[current].Emails.ToArray();
+                CurEmail = SelectedEmails.Length - 1;
+                Display();
+            }
+
+        }
+        private void btnNextPhone_Click(object sender, RoutedEventArgs e)
+        {
+            CurPhone++;
+            if (CurPhone >= SelectedEntries[current].Phones.Count())
+                CurPhone = 0;
+            Display();
+        }
+
+        private void btnAddPhone_Click(object sender, RoutedEventArgs e)
+        {
+            PhoneNumberDialog pnd = new PhoneNumberDialog();
+            if (pnd.ShowDialog() == true)
+            {
+                Phone rec = new Phone();
+                rec.PhoneNumber = pnd.PhoneNumber;
+                rec.PhoneType = (int)pnd.PhoneType;
+                SelectedEntries[current].Phones.Add(rec);
+                DB.SaveChanges();
+                SelectedPhones = SelectedEntries[current].Phones.ToArray();
+                CurPhone = SelectedPhones.Length - 1;
+                Display();
+            }
+
+        }
+
+        private void btnXmlExport_Click(object sender, RoutedEventArgs e)
+        {
+            XElement xe = CreateAddressXML();
+            xe.Save("Entries.xml");
+        }
+        private XElement CreateAddressXML()
+        {
+            XElement xDoc = new XElement("Addresses",
+                from c in DB.Entries.ToArray()
+                select new XElement("Entry",
+                  new XAttribute("ID", c.Id),
+                  new XAttribute("Name", c.Name),
+                  new XAttribute("Address", c.Address),
+                  new XAttribute("CSZ", c.CSZ),
+                    from e in DB.Emails.ToArray()
+                    where e.Id == c.Id
+                    select new XElement("Email",
+                      new XAttribute("RecID", e.Id),
+                      new XAttribute("ID", e.Id),
+                      new XAttribute("EmailAddress", e.EmailAddress)),
+                    from p in DB.Phones.ToArray()
+                    where p.Id == c.Id
+                    select new XElement("Phone",
+                      new XAttribute("PhoneID", p.Id),
+                      new XAttribute("ID", p.Id),
+                      new XAttribute("PhoneNum", p.PhoneNumber),
+                      new XAttribute("Type", p.PhoneType))));
+            return xDoc;
+        }
+
+        /// <summary>
+        /// This method opens a dialogue and asks all the new data info. The method is context 
+        /// and it updates the tables.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void AddButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddWindow aw = new AddWindow();
+            if (aw.ShowDialog() == true)
+            {
+
+                Phone pn = new Phone();
+                Email em = new Email();
+                PhoneNumberDialog pd = new PhoneNumberDialog();
+                EmailAddressDialog ead = new EmailAddressDialog();
+                using (AddressesEntities4 context = new AddressesEntities4())
+                {
+                    try
+                    {
+                        context.Entries.Add(new Entry()
+                        {
+                            Name = aw.NameTB.Text,
+                            ContactType = (int)aw.PhoneType,
+                            Address = aw.AddressTB.Text,
+                            CSZ = aw.CSZTB.Text
+                        });
+                        context.Emails.Add(new Email()
+                        {
+                            EmailAddress = aw.NameTB.Text
+                        });
+                        context.Phones.Add(new Phone()
+                        {
+                            PhoneNumber = aw.PhoneTB.Text
+                        });
+
+                        context.SaveChanges();
+                        //SelectedEntries will not work here. it's the parent table. 
+                        //So the SelectedNewEntries method binds data
+                        SelectedEmails = SelectedEntries[current].Emails.ToArray();
+                        SelectedPhones = SelectedEntries[current].Phones.ToArray();
+
+                        current = SelectedEntries.Length - 1;
+                        CurEmail = SelectedEmails.Length - 1;
+                        CurPhone = SelectedPhones.Length - 1;
+
+                        SelectedEntries = selectNewEntries();
+                        Display();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex.InnerException.Message);
+                    }
+                }
+            }
+
+        }
+      
+        private void DeleteBtn_Click(object sender, RoutedEventArgs e)
+        {
+            Phone[] phones = SelectedEntries[current].Phones.ToArray();
+            Email[] emails = SelectedEntries[current].Emails.ToArray();
+
+            foreach (Email em in emails)
+                DB.Emails.Remove(em);
+
+            foreach (Phone ph in phones)
+                DB.Phones.Remove(ph);
+
+            DB.SaveChanges();
+
+            DB.Entries.Remove(SelectedEntries[current]);
+
+            DB.SaveChanges();
+
+            SelectAllEntries();
+            ResetDisplay();
+
+           
+        }
+
+        private void mapBtn_Click(object sender, RoutedEventArgs e)
+        {
+            Entry ent = SelectedEntries[current];
+            IUtils.Maps.Lookup(ent.Address, ent.CSZ);
+        }
+        /// <summary>
+        /// this method loops thru the records and when the user changes the text, it updates. 
+        /// The break is so that not all records are updated when text is changed.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void UpdateBtn_Click(object sender, RoutedEventArgs e)
+        {
+
+            ObjectContext oc = ((IObjectContextAdapter)DB).ObjectContext;
+
+            foreach (Email email in UpdateEmail)
+            {
+                email.EmailAddress = tbEmail.Text;
+
+                oc.ObjectStateManager.ChangeObjectState(email,
+                                     System.Data.EntityState.Modified);
+                break;
+            }
+            foreach (Phone phone in UpdatePhone)
+            {
+                phone.PhoneNumber = tbPhone.Text;
+
+                oc.ObjectStateManager.ChangeObjectState(phone,
+                                    System.Data.EntityState.Modified);
+                break;
+
+            }
+
+            foreach (Entry entry in SelectedEntries)
+            {
+
+
+                int contextTypeToString = (int)currentType;
+                entry.Name = tbName.Text;
+                entry.Address = tbAddress.Text;
+                entry.CSZ = tbCSZ.Text;
+                entry.ContactType = contextTypeToString;
+
+
+                oc.ObjectStateManager.ChangeObjectState(entry,
+                                         System.Data.EntityState.Modified);
+                break;
+
+
+            }
+
+            DB.SaveChanges();
+
+            CurEmail = SelectedEmails.Length - 1;
+            CurPhone = SelectedPhones.Length - 1;
+            current = SelectedEntries.Length - 1;
+
+            SelectAllEntries();
+            ResetDisplay();
+
+        }
+    }
+}
+
+
