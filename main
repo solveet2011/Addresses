@@ -3,7 +3,7 @@
 //This is a simple .net customer base app that enters names etc, fetches info from database thru entityframework and does
 //CRUD opertations etc.
 
-namespace Addresses
+namespace MappedClients
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -13,7 +13,7 @@ namespace Addresses
 
     public partial class MainWindow : Window
     {
-        AddressesEntities4 DB = new AddressesEntities4();
+        MappedClientsEntities4 DB = new MappedClientsEntities4();
         int current = 0;
         int CurEmail = 0;
         int CurPhone = 0;
@@ -241,7 +241,7 @@ namespace Addresses
         }
         private XElement CreateAddressXML()
         {
-            XElement xDoc = new XElement("Addresses",
+            XElement xDoc = new XElement("MappedClients",
                 from c in DB.Entries.ToArray()
                 select new XElement("Entry",
                   new XAttribute("ID", c.Id),
